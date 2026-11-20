@@ -35,6 +35,10 @@ export function createApp({ db, config, fetchImpl = globalThis.fetch, createClie
     try { await db.query('SELECT 1'); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
   });
 
+  // Build id the open app compares against, so phones pick up a new deploy without a manual reload.
+  const BUILD = process.env.RENDER_GIT_COMMIT || String(Date.now());
+  app.get('/version', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ build: BUILD }); });
+
   app.use(express.json({ limit: '200kb' }));
   app.use(loadUser(ctx));
   app.use(['/api', '/auth'], (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });

@@ -728,3 +728,22 @@ renderSpeaker();
 setupMic();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 route();
+
+// ---------- Auto-update ----------
+// When a new version has been deployed, reload so new screens and buttons appear without the user
+// having to close the app. Checked when the app comes back to the foreground and on screen changes.
+let loadedBuild = null; let lastBuildCheck = 0;
+async function checkBuild() {
+  if (Date.now() - lastBuildCheck < 30000) return;
+  lastBuildCheck = Date.now();
+  try {
+    const r = await fetch('/version', { cache: 'no-store' });
+    if (!r.ok) return;
+    const { build } = await r.json();
+    if (!loadedBuild) { loadedBuild = build; return; }
+    if (build && build !== loadedBuild) location.reload();
+  } catch { /* offline - ignore */ }
+}
+checkBuild();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkBuild(); });
+window.addEventListener('hashchange', checkBuild);
