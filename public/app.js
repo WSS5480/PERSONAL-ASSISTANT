@@ -20,7 +20,8 @@ function h(tag, attrs = {}, ...children) {
   return el;
 }
 const clear = (el) => { while (el.firstChild) el.firstChild.remove(); };
-function show(...nodes) { clear(view); view.append(...nodes.flat()); view.scrollTop = 0; }
+const present = (list) => list.flat(Infinity).filter((n) => n !== null && n !== undefined && n !== false);
+function show(...nodes) { clear(view); view.append(...present(nodes)); view.scrollTop = 0; }
 
 // ---------- API ----------
 async function api(path, { method = 'GET', body } = {}) {
@@ -41,7 +42,7 @@ async function api(path, { method = 'GET', body } = {}) {
 const state = { me: null, integrations: null, messages: [], pending: [], sending: false };
 const isOwner = () => state.me?.role === 'owner';
 const isAdmin = () => ['owner', 'admin'].includes(state.me?.role);
-const fmtTime = (iso) => { try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch { return iso; } };
+const fmtTime = (iso) => { const d = new Date(iso); return iso && !Number.isNaN(d.getTime()) ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''; };
 const num = (n) => Number(n || 0).toLocaleString();
 
 // ---------- Voice ----------
@@ -186,7 +187,7 @@ async function renderAuth() {
   const draw = () => {
     clear(form); err.textContent = '';
     const signup = mode === 'signup';
-    form.append(
+    form.append(...present([
       h('h2', {}, signup ? (status.firstUser ? 'Create the owner account' : 'Sign up') : 'Sign in'),
       status.firstUser ? h('p', { class: 'muted' }, 'This first account becomes the owner.') : null,
       signup ? h('label', { class: 'field' }, h('span', {}, 'Your name'), h('input', { type: 'text', name: 'name', autocomplete: 'name' })) : null,
@@ -197,7 +198,7 @@ async function renderAuth() {
       h('button', { class: 'btn primary full', type: 'submit' }, signup ? 'Create account' : 'Sign in'),
       !status.firstUser && status.signupOpen ? h('p', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); mode = signup ? 'signin' : 'signup'; draw(); } },
         signup ? 'Have an account? Sign in' : 'Have an invite code? Sign up')) : null,
-    );
+    ]));
   };
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -265,7 +266,7 @@ async function loadTiles() {
 
 function renderMessages() {
   clear(msgList);
-  if (!state.messages.length) msgList.append(h('div', { class: 'empty' }, `Hi ${state.me.name || ''}. Tap the mic or type to start.`));
+  if (!state.messages.length) msgList.append(h('div', { class: 'empty' }, `Hi${state.me.name ? ` ${state.me.name}` : ''}. Tap the mic or type to start.`));
   for (const m of state.messages) msgList.append(h('div', { class: `msg ${m.role}${m.pending ? ' pending' : ''}` }, m.content));
   clear(approvals);
   for (const p of state.pending) {
