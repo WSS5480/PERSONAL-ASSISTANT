@@ -61,7 +61,8 @@ export function createApp({ db, config, fetchImpl = globalThis.fetch, createClie
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
   app.use(express.static(PUBLIC, {
-    setHeaders(res, file) { if (/sw\.js$|index\.html$|manifest\.json$/.test(file)) res.set('Cache-Control', 'no-cache'); },
+    // Always revalidate the shell so a new deploy shows up on the next load (phones cache hard).
+    setHeaders(res, file) { if (/\.(js|css|html|json)$/.test(file)) res.set('Cache-Control', 'no-cache'); },
   }));
 
   app.use((err, req, res, _next) => {
