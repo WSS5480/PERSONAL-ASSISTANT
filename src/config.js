@@ -18,6 +18,7 @@ export function loadConfig(env = process.env) {
     databaseUrl: env.DATABASE_URL || '',
     sessionSecret,
     signupCode: env.SIGNUP_CODE || '',
+    ownerEmail: (env.OWNER_EMAIL || '').trim().toLowerCase(),
     appUrl,
     secureCookies: production || appUrl.startsWith('https://'),
     googleClientId: env.GOOGLE_CLIENT_ID || '',

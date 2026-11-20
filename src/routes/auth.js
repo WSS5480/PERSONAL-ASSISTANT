@@ -27,7 +27,13 @@ export function authRoutes(ctx) {
     if (!validPassword(password)) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     const { n } = await ctx.db.one('SELECT count(*)::int AS n FROM users');
     let role = 'user';
-    if (n === 0) role = 'owner';
+    if (n === 0) {
+      // First account becomes the owner. If OWNER_EMAIL is set, only that email can claim it.
+      if (ctx.config.ownerEmail && String(email).trim().toLowerCase() !== ctx.config.ownerEmail) {
+        return res.status(403).json({ error: 'Only the owner can create the first account.' });
+      }
+      role = 'owner';
+    }
     else if (!ctx.config.signupCode) return res.status(403).json({ error: 'Sign-up is closed. Ask the admin for an account.' });
     else if (!sameCode(inviteCode, ctx.config.signupCode)) return res.status(403).json({ error: 'Invalid invite code.' });
     const tz = isValidTimeZone(timezone) ? timezone : 'America/Chicago';

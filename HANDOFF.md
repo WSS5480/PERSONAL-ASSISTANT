@@ -63,6 +63,7 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 
 **Roles and access**
 - `owner` = first account created (DB unique index allows only one). `admin` = promoted by the owner. `user`.
+- `OWNER_EMAIL`: when set, only that email can create the first (owner) account, so nobody else can claim a fresh deploy. Set it before the first deploy.
 - After the first account, self sign-up needs invite code == `SIGNUP_CODE`; empty `SIGNUP_CODE` = sign-up closed. Owner/admin can create people directly (temporary password, must change at first sign-in).
 - Access level (`executive`/`district`/`store`) and district/store labels are **context for the system prompt only, not a security boundary**.
 - Every row has `user_id`; every query filters by it. Admins cannot edit the owner account; only the owner can change roles and the "may use house key" toggle.
@@ -91,6 +92,7 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 
 ## Change log
 
+- 2026-11-19 — Manager review (no reviewer agent on this build, per owner): added `OWNER_EMAIL` lock on the first account + test; the email approval card now shows the message body up to 3,000 characters instead of 300. Checked against real Postgres 16 locally.
 - 2026-11-19 — v0.1.0 first build: accounts/roles, invite/closed sign-up, chat with browser voice in/out, tool loop with approval gate, memory/to-dos/reminders/notes, Google (Gmail + Calendar), Domo (per-user token + catalog), repo grants, Render (owner only), audit log, usage per user, admin console, PWA shell, Render blueprint, tests.
 
 ## Decisions (2026-11-19)
@@ -116,7 +118,7 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 3. **GitHub token scopes** — use a fine-grained read-only token (Contents: read, Metadata: read) over the intended repos; confirm `/user/repos` and code search work with it.
 4. **Google OAuth consent setup** — create a Web OAuth client, add redirect `APP_URL/auth/google/callback`, enable Gmail API + Google Calendar API, add test users while the consent screen is in testing (refresh tokens of "testing" apps expire after 7 days).
 5. **Render plan names** in `render.yaml` (`starter` web, `basic-256mb` Postgres) — confirm on Render; adjust to budget.
-6. **First-account race** — whoever signs up first on a fresh deploy becomes owner. Create the owner account right after the first deploy. (Possible hardening later: lock first sign-up to a set email.)
+6. **First-account race** — closed by `OWNER_EMAIL` (manager review, 2026-11-19): only that email can create the first account. If `OWNER_EMAIL` is ever left empty on a fresh deploy, whoever signs up first becomes owner.
 7. Screens were reasoned for 360px but **not visually tested in a real browser** yet (only a scripted jsdom walk-through of every screen, the chat → approval card → approve flow and the reminder notice, which checks logic, not layout). Check on his phone: chat, admin, apps, voice in/out (iOS Safari speech behaviour especially).
 8. Rate limits and the Domo column cache are in-memory (fine for one instance; revisit if scaled out).
 

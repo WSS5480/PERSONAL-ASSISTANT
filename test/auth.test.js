@@ -106,3 +106,15 @@ test('auth endpoints are rate limited', async () => {
     assert.equal(codes[11], 429);
   } finally { await t.close(); }
 });
+
+test('OWNER_EMAIL locks who can claim the first (owner) account', async () => {
+  const t = await startApp({ env: { OWNER_EMAIL: 'Boss@Example.com' } });
+  try {
+    const stranger = await t.client().post('/auth/signup', { email: 'stranger@example.com', password: 'password1' });
+    assert.equal(stranger.status, 403);
+    assert.equal((await t.db.one('SELECT count(*)::int AS n FROM users')).n, 0);
+    const boss = await t.client().post('/auth/signup', { email: 'boss@example.com', password: 'password1' });
+    assert.equal(boss.status, 201);
+    assert.equal(boss.body.user.role, 'owner');
+  } finally { await t.close(); }
+});

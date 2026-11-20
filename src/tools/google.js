@@ -72,7 +72,7 @@ export default [
     input_schema: emailSchema,
     needsApproval: true,
     available,
-    summarize: (i) => `Send an email to ${oneLine(i.to)}${i.cc ? ` (cc ${oneLine(i.cc)})` : ''} - subject "${oneLine(i.subject)}": ${String(i.body || '').slice(0, 300)}`,
+    summarize: (i) => `Send an email to ${oneLine(i.to)}${i.cc ? ` (cc ${oneLine(i.cc)})` : ''} - subject "${oneLine(i.subject)}": ${String(i.body || '').slice(0, 3000)}${String(i.body || '').length > 3000 ? ' …[message continues]' : ''}`,
     async handler(ctx, input) {
       const m = await googleApi(ctx, `${GMAIL}/messages/send`, { method: 'POST', body: { raw: buildRaw(input) } });
       return { sent: true, id: m.id };
