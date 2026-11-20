@@ -71,3 +71,33 @@ test('Domo Assistant: daily cap', async () => {
     assert.equal((await call(t, '/domo/chat', { method: 'POST', key: 'k', body })).status, 429);
   } finally { await t.close(); }
 });
+
+test('Domo Assistant: stable system prompt, dangling tool calls dropped, reasoning-block rejection retried once', async () => {
+  let n = 0;
+  const t = await startApp({
+    env: { DOMO_APP_KEY: 'k', ANTHROPIC_API_KEY: 'house' },
+    script: (params) => {
+      n++;
+      if (n === 1) { const e = new Error('messages.1.content.0: Invalid `signature` in `thinking` block.'); e.status = 400; throw e; }
+      return textMsg('ok');
+    },
+  });
+  try {
+    const messages = [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: 'x', signature: 'sig' }, { type: 'text', text: 'hello' }] },
+      { role: 'user', content: 'second' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tu_dangling', name: 'query_data', input: { alias: 'SALES', sql: 'SELECT 1 FROM SALES' } }] },
+      { role: 'user', content: 'third' },
+    ];
+    const r = await call(t, '/domo/chat', { method: 'POST', key: 'k', body: { user: { id: '1' }, datasets: DATASETS, messages } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.text, 'ok');
+    assert.equal(t.ai.calls.length, 2, 'retried once');
+    const sent1 = JSON.stringify(t.ai.calls[0].params.messages); const sent2 = JSON.stringify(t.ai.calls[1].params.messages);
+    assert.ok(!sent1.includes('tu_dangling'), 'unanswered tool call removed');
+    assert.ok(sent1.includes('"thinking"') && !sent2.includes('"thinking"'), 'retry drops reasoning blocks');
+    const sys = t.ai.calls[0].params.system.map((b) => b.text).join('\n');
+    assert.match(sys, /Today: \d{4}-\d{2}-\d{2} \(UTC\)/); assert.ok(!/\d{2}:\d{2}:\d{2}/.test(sys), 'no clock time in the system prompt');
+  } finally { await t.close(); }
+});

@@ -129,14 +129,15 @@ function ask(text) {
   if (state.busy || !text.trim()) return;
   state.busy = true; sendBtn.disabled = true;
   add('user', text.trim());
+  var before = state.messages.slice();
   state.messages.push({ role: 'user', content: text.trim() });
   var thinking = add('note', 'Working on it…');
   turn(0).then(function (answer) {
     thinking.remove(); add('bot', answer); speak(answer);
   }).catch(function (err) {
     thinking.remove(); add('err', String((err && err.message) || err));
-    // Drop the failed question so the conversation stays valid.
-    while (state.messages.length && state.messages[state.messages.length - 1].role === 'user') state.messages.pop();
+    // Put the conversation back exactly as it was before this question, so the next one starts clean.
+    state.messages = before;
   }).then(function () {
     // Keep the conversation bounded; always start on a plain user message.
     if (state.messages.length > 40) { state.messages = state.messages.slice(-30); while (state.messages.length && typeof state.messages[0].content !== 'string') state.messages.shift(); }

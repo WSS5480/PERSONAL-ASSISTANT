@@ -53,7 +53,9 @@ export function buildDomoSystem(user, datasets, now = new Date()) {
       '- Keep answers short and practical: the key number first, then at most a few lines. Use a small list for breakdowns. Number list items.',
       '- State the date range you used. Format money with $ and commas.',
     ].join('\n'),
-    dynamic: `Person asking: ${user.name || 'a Domo user'}.\nNow: ${now.toISOString()} (UTC).\nDatasets:\n${list}`,
+    // Date only, no clock time: this text must be identical on every request of one turn, because the
+    // model's reasoning blocks are bound to the system prompt they were created with.
+    dynamic: `Person asking: ${user.name || 'a Domo user'}.\nToday: ${now.toISOString().slice(0, 10)} (UTC).\nDatasets:\n${list}`,
   };
 }
 
@@ -110,15 +112,32 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     if (!messages.length || !messages.every((m) => (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))) {
       return res.status(400).json({ error: 'Bad conversation format.' });
     }
-    try {
-      const out = await runAssistant({
-        user, messages, tools: datasets.length ? [QUERY_TOOL] : [], apiKey, model: ctx.config.model,
+    // A tool call must be answered by the very next message. Drop any that are not (left over from a failed turn).
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      const ids = m.role === 'assistant' && Array.isArray(m.content) ? m.content.filter((b) => b?.type === 'tool_use').map((b) => b.id) : [];
+      if (!ids.length) continue;
+      const next = messages[i + 1];
+      const answered = next && next.role === 'user' && Array.isArray(next.content) && ids.every((id) => next.content.some((b) => b?.type === 'tool_result' && b.tool_use_id === id));
+      if (!answered) messages.splice(i, 1);
+    }
+    while (messages.length && (messages[0].role !== 'user' || (Array.isArray(messages[0].content) && messages[0].content.some((b) => b?.type === 'tool_result')))) messages.shift();
+    if (!messages.length) return res.status(400).json({ error: 'Bad conversation format.' });
+    const run = (msgs) => runAssistant({
+      user, messages: msgs, tools: datasets.length ? [QUERY_TOOL] : [], apiKey, model: ctx.config.model,
         system: buildDomoSystem(user, datasets, new Date(now())), createClient: ctx.createClient,
         executeTool: async (name) => ({ ok: false, error: `Tool ${name} is not available.` }),
         requestApproval: async () => { throw new Error('No approval tools here'); },
         maxIterations: 6, maxTokens: 1200,
-        onUsage: (u, model) => console.log(`[domo] usage user=${user.id || '?'} model=${model} in=${u.input_tokens || 0} out=${u.output_tokens || 0}`),
-      });
+      onUsage: (u, model) => console.log(`[domo] usage user=${user.id || '?'} model=${model} in=${u.input_tokens || 0} out=${u.output_tokens || 0}`),
+    });
+    const noThinking = (msgs) => msgs.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((b) => b?.type !== 'thinking' && b?.type !== 'redacted_thinking') } : m)).filter((m) => !Array.isArray(m.content) || m.content.length);
+    try {
+      let out;
+      try { out = await run(messages); } catch (err) {
+        // Reasoning blocks from an earlier request can be rejected (e.g. the date rolled over). Retry once without them.
+        if (err?.status === 400 && /thinking/i.test(err?.message || '')) out = await run(noThinking(messages)); else throw err;
+      }
       if (out.status === 'needs_client') {
         return res.json({ status: 'needs_client', text: out.text || '', messages: out.messages, calls: out.clientCalls.map((c) => ({ id: c.id, name: c.name, input: c.input })) });
       }
