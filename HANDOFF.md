@@ -92,6 +92,7 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 
 ## Change log
 
+- 2026-11-19 — First Render deploy (MY APPS workspace: web service `my-assistant` https://my-assistant-rjme.onrender.com, Postgres `my-assistant-db`, Oregon). The first boot ran out of memory because `DATABASE_URL` was not set and the embedded dev database loaded; the server now exits with a clear message in production when `DATABASE_URL` is missing.
 - 2026-11-19 — Manager review (no reviewer agent on this build, per owner): added `OWNER_EMAIL` lock on the first account + test; the email approval card now shows the message body up to 3,000 characters instead of 300. Checked against real Postgres 16 locally.
 - 2026-11-19 — v0.1.0 first build: accounts/roles, invite/closed sign-up, chat with browser voice in/out, tool loop with approval gate, memory/to-dos/reminders/notes, Google (Gmail + Calendar), Domo (per-user token + catalog), repo grants, Render (owner only), audit log, usage per user, admin console, PWA shell, Render blueprint, tests.
 
