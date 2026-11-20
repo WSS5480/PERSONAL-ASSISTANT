@@ -10,6 +10,12 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { runAssistant } from '../ai/loop.js';
 import { rateLimit } from '../auth.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const APP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'domo-assistant');
+const APP_FILES = { 'manifest.json': 'application/json', 'index.html': 'text/html', 'app.css': 'text/css', 'app.js': 'text/javascript' };
 
 const ORIGIN_OK = /^https:\/\/[a-z0-9.-]+\.domo\.com$/i;
 const MAX_MESSAGES = 60;
@@ -69,6 +75,13 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
   // Connection test: tells the Domo app whether it reached this server and whether the server is ready.
   r.get('/ping', (req, res) => {
     res.json({ ok: true, ready: !!(appKey && (ctx.config.domoAnthropicApiKey || ctx.config.anthropicApiKey)), keyAccepted: appKey ? sameKey(req.headers['x-domo-app-key'], appKey) : false });
+  });
+
+  // The Domo app's own source files (APP_KEY is a placeholder here), so they can be pulled into Domo at publish time.
+  r.get('/app-files/:name', (req, res) => {
+    const type = APP_FILES[req.params.name];
+    if (!type) return res.status(404).json({ error: 'Not found' });
+    res.type(type).send(fs.readFileSync(path.join(APP_DIR, req.params.name), 'utf8'));
   });
 
   const limiter = rateLimit({ windowMs: 60_000, max: 20, name: 'domo' });
