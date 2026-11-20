@@ -267,3 +267,27 @@ test('Secrets never appear in any API response; stored encrypted', async () => {
     assert.ok(!row.domo_token_enc.includes('USERSECRET'));
   } finally { await t.close(); }
 });
+
+test('Domo catalog import: uses the admin\'s own token, keeps existing entries, admin-only', async () => {
+  const page = Array.from({ length: 3 }, (_, i) => ({ id: `bbbbbbbb-0000-0000-0000-00000000000${i}`, name: `Set ${i}`, description: `desc ${i}`, rowCount: 10 * i }));
+  const t = await startApp({ env: { DOMO_INSTANCE: 'acme' }, routes: [
+    { match: (c) => /\/api\/data\/ui\/v3\/datasources\/search/.test(c.url), respond: () => ({ body: { dataSources: page } }) },
+  ] });
+  try {
+    const o = await owner(t);
+    const U = await createUser(t, o, { email: 'u@example.com' });
+    assert.equal((await U.post('/api/admin/datasets/import', {})).status, 403);
+    assert.equal((await o.post('/api/admin/datasets/import', {})).status, 400, 'no token yet');
+    await o.put('/api/me/domo-token', { token: 'TOKEN-OWNER-9999' });
+    await o.post('/api/admin/datasets', { name: 'Mine', datasetId: page[0].id, description: 'keep me' });
+    t.fetchCalls.length = 0;
+    const r = await o.post('/api/admin/datasets/import', {});
+    assert.equal(r.status, 200, r.text);
+    assert.deepEqual(r.body, { found: 3, added: 2 });
+    assert.equal(t.fetchCalls[0].headers['X-DOMO-Developer-Token'], 'TOKEN-OWNER-9999');
+    const list = (await o.get('/api/admin/datasets')).body.datasets;
+    assert.equal(list.length, 3);
+    assert.equal(list.find((d) => d.dataset_id === page[0].id).description, 'keep me');
+    for (const resp of o.responses) assert.ok(!resp.includes('TOKEN-OWNER-9999'));
+  } finally { await t.close(); }
+});

@@ -55,3 +55,28 @@ export function domoDatasetMeta(ctx, token, datasetId) {
   return domoFetch(ctx, `${base(ctx.config.domoInstance)}/api/data/v3/datasources/${encodeURIComponent(datasetId)}?part=core,permission`,
     { method: 'GET', headers: headers(token) });
 }
+
+// Lists every dataset the token's user can see, via Domo's Data Center search endpoint
+// (POST /api/data/ui/v3/datasources/search). Not in Domo's public API reference - it is the
+// endpoint the Domo UI itself uses - so the response is read defensively. MUST-VERIFY live.
+export async function domoListAllDatasets(ctx, token, { max = 2000, pageSize = 100 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (let offset = 0; offset < max; offset += pageSize) {
+    const data = await domoFetch(ctx, `${base(ctx.config.domoInstance)}/api/data/ui/v3/datasources/search`, {
+      method: 'POST', headers: headers(token),
+      body: JSON.stringify({ entities: ['DATASET'], filters: [], combineResults: true, query: '*', count: pageSize, offset }),
+    });
+    const items = Array.isArray(data) ? data : (data.dataSources || data.searchObjects || data.datasets || []);
+    let fresh = 0;
+    for (const d of items) {
+      const id = String(d.id || d.databaseId || d.dataSourceId || '').trim();
+      const name = String(d.name || d.displayName || '').trim();
+      if (!id || !name || seen.has(id)) continue;
+      seen.add(id); fresh++;
+      out.push({ id, name, description: String(d.description || '').trim(), rowCount: d.rowCount ?? null, type: d.displayType || d.dataProviderType || d.type || '' });
+    }
+    if (items.length < pageSize || !fresh) break;
+  }
+  return out;
+}

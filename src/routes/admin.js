@@ -6,6 +6,8 @@ import { normalizeRepo, listTokenRepos } from '../integrations/github.js';
 import { isValidTimeZone } from '../time.js';
 import { validEmail, validPassword } from './auth.js';
 import { intId } from './api.js';
+import { audit } from '../audit.js';
+import { domoListAllDatasets } from '../integrations/domo.js';
 
 const ACCESS = ['executive', 'district', 'store'];
 
@@ -161,6 +163,26 @@ export function adminRoutes(ctx) {
       if (/unique|duplicate/i.test(e.message)) return res.status(409).json({ error: 'That dataset ID is already in the catalog.' });
       throw e;
     }
+  });
+  // Fills the catalog with every dataset the signed-in admin's own Domo token can see. Existing entries are kept.
+  r.post('/datasets/import', async (req, res) => {
+    if (!ctx.config.domoInstance) return res.status(400).json({ error: 'DOMO_INSTANCE is not set in the Render environment settings.' });
+    if (!req.user.domo_token_enc) return res.status(400).json({ error: 'Add your own Domo token in Settings first.' });
+    let found;
+    try {
+      found = await domoListAllDatasets(ctx, ctx.secrets.decrypt(req.user.domo_token_enc));
+    } catch (e) {
+      return res.status(502).json({ error: `Domo did not return the dataset list: ${e.message}` });
+    }
+    let added = 0;
+    for (const d of found) {
+      if (!/^[A-Za-z0-9-]{8,}$/.test(d.id)) continue;
+      const desc = [d.description, d.type ? `Source: ${d.type}` : '', d.rowCount != null ? `${d.rowCount} rows at import` : ''].filter(Boolean).join(' | ').slice(0, 4000);
+      const rows = await ctx.db.query('INSERT INTO datasets (name, dataset_id, description) VALUES ($1,$2,$3) ON CONFLICT (dataset_id) DO NOTHING RETURNING id', [d.name.slice(0, 200), d.id, desc]);
+      added += rows.length;
+    }
+    await audit(ctx.db, req.user.id, 'domo_catalog_import', `found ${found.length}, added ${added}`, 'ok');
+    res.json({ found: found.length, added });
   });
   r.put('/datasets/:id', async (req, res) => {
     const id = intId(req.params.id); if (!id) return res.status(400).json({ error: 'Bad id' });

@@ -5,6 +5,7 @@ import { domoQuery, domoDatasetMeta, validateSelect, MAX_ROWS, DOMO_TABLE_NAME }
 const available = (ctx) => !!(ctx.config.domoInstance && ctx.user.domo_token_enc);
 const columnCache = new Map(); // key `${userId}:${datasetId}` -> { columns, at }
 const CACHE_MS = 30 * 60 * 1000;
+const LIST_LIMIT = 40;
 
 function userToken(ctx) {
   const token = ctx.secrets.decrypt(ctx.user.domo_token_enc);
@@ -20,13 +21,19 @@ async function catalogEntry(db, datasetId) {
 export default [
   {
     name: 'domo_list_datasets',
-    description: 'List/search the Domo dataset catalog (names, ids, what each answers). Start here for any business-data question.',
+    description: 'List/search the Domo dataset catalog (names, ids, what each answers). Start here for any business-data question. The catalog can be large: pass a search word (e.g. "sales", "inventory") rather than listing everything.',
     input_schema: { type: 'object', properties: { search: { type: 'string' } } },
     available,
     async handler(ctx, { search }) {
-      const rows = await ctx.db.query(`SELECT name, dataset_id, description, column_notes FROM datasets
-        WHERE ($1::text IS NULL OR name ILIKE '%'||$1||'%' OR description ILIKE '%'||$1||'%' OR column_notes ILIKE '%'||$1||'%') ORDER BY name`, [search?.trim() || null]);
-      return { datasets: rows, sqlTableName: DOMO_TABLE_NAME };
+      const term = search?.trim() || null;
+      const where = `($1::text IS NULL OR name ILIKE '%'||$1||'%' OR description ILIKE '%'||$1||'%' OR column_notes ILIKE '%'||$1||'%')`;
+      const { n } = await ctx.db.one(`SELECT count(*)::int AS n FROM datasets WHERE ${where}`, [term]);
+      const rows = await ctx.db.query(`SELECT name, dataset_id, left(description, 300) AS description, left(column_notes, 300) AS column_notes
+        FROM datasets WHERE ${where} ORDER BY name LIMIT ${LIST_LIMIT}`, [term]);
+      return {
+        datasets: rows, total: n, sqlTableName: DOMO_TABLE_NAME,
+        ...(n > rows.length ? { note: `Showing ${rows.length} of ${n}. Search with a word from the dataset name to narrow it.` } : {}),
+      };
     },
   },
   {

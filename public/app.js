@@ -693,7 +693,18 @@ async function renderDatasets(editing = null) {
       renderDatasets();
     } catch (ex) { err.textContent = ex.message; }
   });
-  show(h('button', { class: 'btn small', onclick: () => { location.hash = '#admin'; } }, '‹ Back'), form,
+  const importMsg = h('p', { class: 'muted' }, 'Pulls in every dataset your own Domo login can see. Entries already here are kept.');
+  const importBtn = h('button', { class: 'btn primary', type: 'button' }, 'Import all from Domo');
+  importBtn.addEventListener('click', async () => {
+    importBtn.disabled = true; importMsg.textContent = 'Importing from Domo…';
+    try {
+      const r = await api('/api/admin/datasets/import', { method: 'POST', body: {} });
+      toast(`Found ${r.found} datasets, added ${r.added}.`);
+      renderDatasets();
+    } catch (ex) { importMsg.textContent = ex.message; importMsg.className = 'error'; importBtn.disabled = false; }
+  });
+  const importCard = h('div', { class: 'card' }, h('h2', {}, 'Import from Domo'), importMsg, h('div', { class: 'row' }, importBtn));
+  show(h('button', { class: 'btn small', onclick: () => { location.hash = '#admin'; } }, '‹ Back'), editing ? null : importCard, form,
     h('div', { class: 'section-title' }, `Catalog (${datasets.length})`),
     datasets.length ? datasets.map((d) => h('div', { class: 'card' }, h('h3', {}, d.name), h('div', { class: 'muted' }, d.dataset_id),
       d.description ? h('div', {}, d.description) : null, d.column_notes ? h('div', { class: 'muted' }, d.column_notes) : null,
