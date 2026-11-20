@@ -1,0 +1,31 @@
+{
+  "name": "my-assistant",
+  "version": "0.1.0",
+  "description": "My Assistant - voice-first multi-user AI assistant (Claude API)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WSS5480/personal-assistant.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/WSS5480/personal-assistant/issues"
+  },
+  "homepage": "https://github.com/WSS5480/personal-assistant#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
+    "@electric-sql/pglite": "^0.5.17",
+    "express": "^5.3.0",
+    "pg": "^8.23.1"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
