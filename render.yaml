@@ -39,6 +39,10 @@ services:
         sync: false
       - key: RENDER_API_KEY
         sync: false
+      - key: DOMO_APP_KEY
+        generateValue: true
+      - key: DOMO_ANTHROPIC_API_KEY
+        sync: false
 
 databases:
   - name: my-assistant-db

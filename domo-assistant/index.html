@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Domo Assistant</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header>
+    <div class="title">Assistant</div>
+    <div class="status" id="status" title="Connection status"></div>
+    <button id="speaker" class="icon" type="button" aria-label="Read answers aloud">🔈</button>
+    <button id="clear" class="icon" type="button" aria-label="Start over">↺</button>
+  </header>
+  <main id="log" aria-live="polite"></main>
+  <form id="form">
+    <button id="mic" class="icon mic" type="button" aria-label="Talk" hidden>🎤</button>
+    <textarea id="input" rows="1" placeholder="Ask about your numbers…" autocomplete="off"></textarea>
+    <button id="send" class="send" type="submit">Ask</button>
+  </form>
+  <script src="https://unpkg.com/ryuu.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

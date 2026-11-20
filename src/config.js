@@ -26,5 +26,9 @@ export function loadConfig(env = process.env) {
     domoInstance: (env.DOMO_INSTANCE || '').replace(/\.domo\.com.*$/i, '').replace(/^https?:\/\//i, ''),
     githubToken: env.GITHUB_TOKEN || '',
     renderApiKey: env.RENDER_API_KEY || '',
+    // Domo Assistant (the app inside Domo). DOMO_APP_KEY is the shared key the Domo app sends.
+    domoAppKey: env.DOMO_APP_KEY || '',
+    domoAnthropicApiKey: env.DOMO_ANTHROPIC_API_KEY || '',
+    domoDailyLimit: Number(env.DOMO_DAILY_LIMIT) || 2000,
   };
 }

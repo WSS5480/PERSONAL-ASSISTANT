@@ -7,6 +7,7 @@ import { loadUser, csrfGuard, requireUser } from './auth.js';
 import { authRoutes } from './routes/auth.js';
 import { apiRoutes } from './routes/api.js';
 import { adminRoutes } from './routes/admin.js';
+import { domoRoutes } from './routes/domo.js';
 import { googleConfigured, startAuth, finishAuth } from './integrations/google.js';
 import { defaultCreateClient } from './ai/loop.js';
 
@@ -59,6 +60,7 @@ export function createApp({ db, config, fetchImpl = globalThis.fetch, createClie
     }
   });
 
+  app.use('/domo', domoRoutes(ctx));
   app.use('/auth', authRoutes(ctx));
   app.use('/api/admin', adminRoutes(ctx));
   app.use('/api', apiRoutes(ctx));

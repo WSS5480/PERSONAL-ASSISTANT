@@ -1,0 +1,9 @@
+{
+  "name": "Domo Assistant",
+  "version": "0.1.0",
+  "fullpage": true,
+  "size": { "width": 4, "height": 4 },
+  "datasetsMapping": [
+    { "alias": "INVENTORY_DISPOSITION_FINAL", "dataSetId": "6d675cab-6fac-4f9c-98c0-ec35c95c9b32", "fields": [] }
+  ]
+}
