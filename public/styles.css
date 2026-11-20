@@ -84,7 +84,7 @@ pre.log { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; marg
 
 /* Tiles */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 12px; }
-.tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; min-height: 72px; text-align: left; cursor: pointer; }
+.tile { min-width: 0; overflow-wrap: anywhere; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; min-height: 72px; text-align: left; cursor: pointer; }
 .tile .num { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
 .tile .lbl { font-size: .85rem; color: var(--muted); }
 .tile.alert .num { color: var(--bad); }

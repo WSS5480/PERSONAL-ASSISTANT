@@ -117,7 +117,7 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 4. **Google OAuth consent setup** — create a Web OAuth client, add redirect `APP_URL/auth/google/callback`, enable Gmail API + Google Calendar API, add test users while the consent screen is in testing (refresh tokens of "testing" apps expire after 7 days).
 5. **Render plan names** in `render.yaml` (`starter` web, `basic-256mb` Postgres) — confirm on Render; adjust to budget.
 6. **First-account race** — whoever signs up first on a fresh deploy becomes owner. Create the owner account right after the first deploy. (Possible hardening later: lock first sign-up to a set email.)
-7. Screens were reasoned for 360px but **not visually tested in a real browser** yet — check on his phone (chat, admin, apps).
+7. Screens were reasoned for 360px but **not visually tested in a real browser** yet (only a scripted jsdom walk-through of every screen, the chat → approval card → approve flow and the reminder notice, which checks logic, not layout). Check on his phone: chat, admin, apps, voice in/out (iOS Safari speech behaviour especially).
 8. Rate limits and the Domo column cache are in-memory (fine for one instance; revisit if scaled out).
 
 ## Next phases
