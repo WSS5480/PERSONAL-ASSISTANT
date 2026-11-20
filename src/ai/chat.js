@@ -8,7 +8,7 @@ import { toolsForUser, executeTool, describeAction, getTool } from '../tools/reg
 
 const HISTORY_WINDOW = 20;
 const APPROVAL_MINUTES = 30;
-const YES = /^\s*(yes|yeah|yep|yup|approve|approved|do it|go ahead|confirm|confirmed|ok|okay|send it|sure)\b[\s.!]*(please)?[\s.!]*$/i;
+const YES = /^\s*(yes|yeah|yep|yup|approve|approved|do it|go ahead|confirm|confirmed|send it)\b[\s.!]*(please)?[\s.!]*$/i;
 const NO = /^\s*(no|nope|cancel|cancelled|stop|don'?t|do not|never ?mind|abort)\b[\s.!]*$/i;
 
 async function saveMessage(db, userId, role, content) {

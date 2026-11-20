@@ -32,7 +32,7 @@ async function api(path, { method = 'GET', body } = {}) {
   });
   let data = {};
   try { data = await res.json(); } catch { /* empty */ }
-  if (res.status === 401 && !path.startsWith('/auth/')) { state.me = null; route(); }
+  if (res.status === 401 && state.me && !path.startsWith('/auth/')) { state.me = null; route(); }
   if (!res.ok) { const e = new Error(data.error || `Error ${res.status}`); e.status = res.status; e.data = data; throw e; }
   return data;
 }

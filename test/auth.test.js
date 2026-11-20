@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApp, owner } from './helpers.js';
 
@@ -93,5 +93,16 @@ test('healthz and security headers', async () => {
     assert.equal(r.body.ok, true);
     assert.match(r.headers.get('content-security-policy'), /default-src 'self'/);
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  } finally { await t.close(); }
+});
+
+test('auth endpoints are rate limited', async () => {
+  const t = await startApp();
+  try {
+    const c = t.client();
+    const codes = [];
+    for (let i = 0; i < 12; i++) codes.push((await c.post('/auth/signin', { email: 'n@example.com', password: 'whatever1' })).status);
+    assert.deepEqual(codes.slice(0, 10), Array(10).fill(401));
+    assert.equal(codes[11], 429);
   } finally { await t.close(); }
 });

@@ -70,5 +70,3 @@ export default [
     },
   },
 ];
-
-export const _columnCache = columnCache;
