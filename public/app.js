@@ -703,12 +703,22 @@ async function renderDatasets(editing = null) {
       renderDatasets();
     } catch (ex) { importMsg.textContent = ex.message; importMsg.className = 'error'; importBtn.disabled = false; }
   });
-  const importCard = h('div', { class: 'card' }, h('h2', {}, 'Import from Domo'), importMsg, h('div', { class: 'row' }, importBtn));
+  const matchBtn = h('button', { class: 'btn', type: 'button' }, 'Keep only dashboard & app data');
+  matchBtn.addEventListener('click', async () => {
+    matchBtn.disabled = true; importMsg.className = 'muted'; importMsg.textContent = 'Checking which datasets feed your dashboards and apps… this can take a minute.';
+    try {
+      const r = await api('/api/admin/datasets/match-cards', { method: 'POST', body: {} });
+      toast(`Checked ${r.checked}: ${r.inUse} feed dashboards or apps, ${r.hidden} hidden from the assistant${r.failed ? `, ${r.failed} could not be checked` : ''}.`, 9000);
+      renderDatasets();
+    } catch (ex) { importMsg.textContent = ex.message; importMsg.className = 'error'; matchBtn.disabled = false; }
+  });
+  const importCard = h('div', { class: 'card' }, h('h2', {}, 'Import from Domo'), importMsg, h('div', { class: 'row' }, importBtn, matchBtn));
   show(h('button', { class: 'btn small', onclick: () => { location.hash = '#admin'; } }, '‹ Back'), editing ? null : importCard, form,
-    h('div', { class: 'section-title' }, `Catalog (${datasets.length})`),
-    datasets.length ? datasets.map((d) => h('div', { class: 'card' }, h('h3', {}, d.name), h('div', { class: 'muted' }, d.dataset_id),
-      d.description ? h('div', {}, d.description) : null, d.column_notes ? h('div', { class: 'muted' }, d.column_notes) : null,
+    h('div', { class: 'section-title' }, `Catalog (${datasets.filter((d) => d.active).length} in use by the assistant, ${datasets.filter((d) => !d.active).length} hidden)`),
+    datasets.length ? datasets.map((d) => h('div', { class: 'card' }, h('h3', {}, d.name), h('div', { class: 'muted' }, d.active ? d.dataset_id : `Hidden from the assistant · ${d.dataset_id}`),
+      d.description ? h('div', {}, d.description) : null, d.used_by ? h('div', { class: 'muted' }, `Feeds: ${d.used_by}`) : null, d.column_notes ? h('div', { class: 'muted' }, d.column_notes) : null,
       h('div', { class: 'row mt8' }, h('button', { class: 'btn small', onclick: () => renderDatasets(d) }, 'Edit'),
+        h('button', { class: 'btn small', onclick: async () => { await api(`/api/admin/datasets/${d.id}/active`, { method: 'PATCH', body: { active: !d.active } }); renderDatasets(); } }, d.active ? 'Hide' : 'Show'),
         h('button', { class: 'btn small danger', onclick: async () => { if (confirm(`Remove ${d.name} from the catalog?`)) { await api(`/api/admin/datasets/${d.id}`, { method: 'DELETE' }); renderDatasets(); } } }, 'Remove'))))
       : h('div', { class: 'empty' }, 'No datasets yet. Add the ones the assistant should know about.'));
 }

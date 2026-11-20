@@ -134,3 +134,7 @@ CREATE TABLE IF NOT EXISTS repo_grants (
   repo TEXT NOT NULL,
   PRIMARY KEY (user_id, repo)
 );
+
+-- 2026-11-20: catalog entries can be hidden from the assistant; used_by lists the Domo cards/apps a dataset feeds.
+ALTER TABLE datasets ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE datasets ADD COLUMN IF NOT EXISTS used_by TEXT NOT NULL DEFAULT '';

@@ -13,7 +13,7 @@ function userToken(ctx) {
   return token;
 }
 async function catalogEntry(db, datasetId) {
-  const row = await db.one('SELECT * FROM datasets WHERE dataset_id = $1', [String(datasetId || '').trim()]);
+  const row = await db.one('SELECT * FROM datasets WHERE dataset_id = $1 AND active', [String(datasetId || '').trim()]);
   if (!row) throw new Error('That dataset is not in the catalog. Use domo_list_datasets.');
   return row;
 }
@@ -21,14 +21,14 @@ async function catalogEntry(db, datasetId) {
 export default [
   {
     name: 'domo_list_datasets',
-    description: 'List/search the Domo dataset catalog (names, ids, what each answers). Start here for any business-data question. The catalog can be large: pass a search word (e.g. "sales", "inventory") rather than listing everything.',
+    description: 'List/search the Domo dataset catalog (names, ids, what each answers). Start here for any business-data question. Each entry has feeds_cards, which lists the dashboard cards and apps built on it - when the user names a dashboard, app or report, search for that name and prefer the dataset that feeds it. The catalog can be large: pass a search word (e.g. "sales", "inventory") rather than listing everything.',
     input_schema: { type: 'object', properties: { search: { type: 'string' } } },
     available,
     async handler(ctx, { search }) {
       const term = search?.trim() || null;
-      const where = `($1::text IS NULL OR name ILIKE '%'||$1||'%' OR description ILIKE '%'||$1||'%' OR column_notes ILIKE '%'||$1||'%')`;
+      const where = `active AND ($1::text IS NULL OR name ILIKE '%'||$1||'%' OR description ILIKE '%'||$1||'%' OR column_notes ILIKE '%'||$1||'%' OR used_by ILIKE '%'||$1||'%')`;
       const { n } = await ctx.db.one(`SELECT count(*)::int AS n FROM datasets WHERE ${where}`, [term]);
-      const rows = await ctx.db.query(`SELECT name, dataset_id, left(description, 300) AS description, left(column_notes, 300) AS column_notes
+      const rows = await ctx.db.query(`SELECT name, dataset_id, left(description, 300) AS description, left(column_notes, 300) AS column_notes, left(used_by, 400) AS feeds_cards
         FROM datasets WHERE ${where} ORDER BY name LIMIT ${LIST_LIMIT}`, [term]);
       return {
         datasets: rows, total: n, sqlTableName: DOMO_TABLE_NAME,
@@ -54,7 +54,7 @@ export default [
       }
       return {
         name: meta.name || entry.name, rowCount: meta.rowCount, columnCount: meta.columnCount, columns: cached.columns,
-        description: entry.description, columnNotes: entry.column_notes, sqlTableName: DOMO_TABLE_NAME,
+        description: entry.description, columnNotes: entry.column_notes, feedsCards: entry.used_by, sqlTableName: DOMO_TABLE_NAME,
       };
     },
   },

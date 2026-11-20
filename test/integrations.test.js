@@ -291,3 +291,34 @@ test('Domo catalog import: uses the admin\'s own token, keeps existing entries, 
     for (const resp of o.responses) assert.ok(!resp.includes('TOKEN-OWNER-9999'));
   } finally { await t.close(); }
 });
+
+test('Domo catalog: keep only dashboard/app data hides unused datasets from the assistant; failed check changes nothing', async () => {
+  const USED = 'cccccccc-0000-0000-0000-000000000001'; const UNUSED = 'cccccccc-0000-0000-0000-000000000002';
+  let fail = false;
+  const t = await startApp({ env: { DOMO_INSTANCE: 'acme' }, routes: [
+    { match: (c) => /\/api\/content\/v1\/datasources\//.test(c.url), respond: (c) => (fail ? { status: 403, body: { message: 'no' } }
+      : { body: c.url.includes(USED) ? [{ id: 1, title: 'Executive Dashboard - Sales' }, { id: 2, title: 'DMR Live!' }] : [] }) },
+    { match: (c) => /\/api\/query\/v1\/execute\//.test(c.url), respond: () => ({ body: [{ a: 1 }] }) },
+  ] });
+  try {
+    const o = await owner(t);
+    await o.put('/api/me/domo-token', { token: 'TOKEN-OWNER-9999' });
+    await o.post('/api/admin/datasets', { name: 'Sales', datasetId: USED });
+    await o.post('/api/admin/datasets', { name: 'Scratch', datasetId: UNUSED });
+    fail = true;
+    assert.equal((await o.post('/api/admin/datasets/match-cards', {})).status, 502);
+    assert.ok((await o.get('/api/admin/datasets')).body.datasets.every((d) => d.active), 'failed check must not hide anything');
+    fail = false;
+    const r = await o.post('/api/admin/datasets/match-cards', {});
+    assert.deepEqual(r.body, { checked: 2, inUse: 1, hidden: 1, failed: 0 });
+    const me = await userRow(t, 'owner@example.com');
+    const list = await executeTool(ctxFor(t, me), 'domo_list_datasets', { search: 'executive' });
+    assert.equal(list.result.datasets.length, 1);
+    assert.match(list.result.datasets[0].feeds_cards, /Executive Dashboard/);
+    const q = await executeTool(ctxFor(t, me), 'domo_query', { dataset_id: UNUSED, sql: 'SELECT * FROM table' });
+    assert.equal(q.ok, false, 'hidden dataset cannot be queried');
+    const ds = (await o.get('/api/admin/datasets')).body.datasets.find((d) => d.dataset_id === UNUSED);
+    await o.patch(`/api/admin/datasets/${ds.id}/active`, { active: true });
+    assert.equal((await executeTool(ctxFor(t, me), 'domo_query', { dataset_id: UNUSED, sql: 'SELECT * FROM table' })).ok, true);
+  } finally { await t.close(); }
+});

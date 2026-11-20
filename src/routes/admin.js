@@ -7,7 +7,7 @@ import { isValidTimeZone } from '../time.js';
 import { validEmail, validPassword } from './auth.js';
 import { intId } from './api.js';
 import { audit } from '../audit.js';
-import { domoListAllDatasets } from '../integrations/domo.js';
+import { domoListAllDatasets, domoDatasetCards } from '../integrations/domo.js';
 
 const ACCESS = ['executive', 'district', 'store'];
 
@@ -149,7 +149,7 @@ export function adminRoutes(ctx) {
   });
 
   // Dataset catalog
-  r.get('/datasets', async (req, res) => res.json({ datasets: await ctx.db.query('SELECT * FROM datasets ORDER BY name') }));
+  r.get('/datasets', async (req, res) => res.json({ datasets: await ctx.db.query('SELECT * FROM datasets ORDER BY active DESC, name') }));
   const dsFields = (b) => ({
     name: String(b.name || '').trim().slice(0, 200), datasetId: String(b.datasetId || '').trim().slice(0, 100),
     description: String(b.description || '').slice(0, 4000), columnNotes: String(b.columnNotes || '').slice(0, 8000),
@@ -183,6 +183,42 @@ export function adminRoutes(ctx) {
     }
     await audit(ctx.db, req.user.id, 'domo_catalog_import', `found ${found.length}, added ${added}`, 'ok');
     res.json({ found: found.length, added });
+  });
+  // Narrows the catalog to data that feeds dashboards and apps: looks up the cards built on each dataset
+  // (with the signed-in admin's own Domo token), records their titles, and hides datasets no card uses.
+  r.post('/datasets/match-cards', async (req, res) => {
+    if (!ctx.config.domoInstance) return res.status(400).json({ error: 'DOMO_INSTANCE is not set in the Render environment settings.' });
+    if (!req.user.domo_token_enc) return res.status(400).json({ error: 'Add your own Domo token in Settings first.' });
+    const token = ctx.secrets.decrypt(req.user.domo_token_enc);
+    const all = await ctx.db.query('SELECT id, dataset_id FROM datasets ORDER BY id LIMIT 3000');
+    const results = new Array(all.length);
+    let next = 0; let firstError = '';
+    const worker = async () => {
+      while (next < all.length) {
+        const i = next++;
+        try { results[i] = await domoDatasetCards(ctx, token, all[i].dataset_id); } catch (e) { results[i] = null; firstError ||= e.message; }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    const failed = results.filter((x) => x === null).length;
+    // If Domo refused most lookups, change nothing - never hide data on a failed check.
+    if (all.length && failed > all.length / 2) return res.status(502).json({ error: `Domo did not return the cards for most datasets (${firstError}). Nothing was changed.` });
+    let inUse = 0; let hidden = 0;
+    for (let i = 0; i < all.length; i++) {
+      const cards = results[i]; if (cards === null) continue;
+      const titles = [...new Set(cards.map((c) => c.title))];
+      const usedBy = titles.slice(0, 40).join('; ').slice(0, 2000) + (titles.length > 40 ? `; +${titles.length - 40} more` : '');
+      await ctx.db.query('UPDATE datasets SET used_by = $2, active = $3 WHERE id = $1', [all[i].id, usedBy, titles.length > 0]);
+      if (titles.length) inUse++; else hidden++;
+    }
+    await audit(ctx.db, req.user.id, 'domo_catalog_match_cards', `checked ${all.length}, in use ${inUse}, hidden ${hidden}, failed ${failed}`, 'ok');
+    res.json({ checked: all.length, inUse, hidden, failed });
+  });
+  r.patch('/datasets/:id/active', async (req, res) => {
+    const id = intId(req.params.id); if (!id) return res.status(400).json({ error: 'Bad id' });
+    const row = await ctx.db.one('UPDATE datasets SET active = $2 WHERE id = $1 RETURNING *', [id, !!req.body?.active]);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json({ dataset: row });
   });
   r.put('/datasets/:id', async (req, res) => {
     const id = intId(req.params.id); if (!id) return res.status(400).json({ error: 'Bad id' });

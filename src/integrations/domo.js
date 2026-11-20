@@ -80,3 +80,12 @@ export async function domoListAllDatasets(ctx, token, { max = 2000, pageSize = 1
   }
   return out;
 }
+
+// Cards (dashboard cards and app cards) built on a dataset. Per Domo's Datasets API page:
+// GET /api/content/v1/datasources/{id}/cards?drill=true -> [{ id, title, type, ... }]. MUST-VERIFY live.
+export async function domoDatasetCards(ctx, token, datasetId) {
+  const data = await domoFetch(ctx, `${base(ctx.config.domoInstance)}/api/content/v1/datasources/${encodeURIComponent(datasetId)}/cards?drill=true`,
+    { method: 'GET', headers: headers(token) });
+  const items = Array.isArray(data) ? data : (data.cards || []);
+  return items.map((c) => ({ id: c.id, title: String(c.title || '').trim(), type: c.type || '' })).filter((c) => c.title);
+}
