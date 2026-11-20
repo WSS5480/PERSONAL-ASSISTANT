@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Assistant">
+  <title>My Assistant</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="backBtn" class="icon-btn" hidden aria-label="Back">‹</button>
+      <h1 id="title">My Assistant</h1>
+      <button id="stopTalk" class="pill warn" hidden>Stop talking</button>
+      <button id="speakerBtn" class="icon-btn" aria-label="Speaker on/off" title="Read replies aloud">🔊</button>
+    </header>
+    <div id="notices" aria-live="polite"></div>
+    <main id="view" tabindex="-1"></main>
+    <div id="composer" hidden>
+      <form id="chatForm" autocomplete="off">
+        <textarea id="chatInput" rows="1" placeholder="Type or tap the mic…" aria-label="Message"></textarea>
+        <button id="sendBtn" type="submit" class="send-btn" aria-label="Send">➤</button>
+        <button id="micBtn" type="button" class="mic-btn" aria-label="Talk" hidden>🎤</button>
+      </form>
+    </div>
+    <nav id="nav" hidden>
+      <a href="#chat" data-tab="chat"><span>💬</span>Chat</a>
+      <a href="#todos" data-tab="todos"><span>✅</span>To-dos</a>
+      <a href="#reminders" data-tab="reminders"><span>⏰</span>Reminders</a>
+      <a href="#notes" data-tab="notes"><span>📝</span>Notes</a>
+      <a href="#more" data-tab="more"><span>☰</span>More</a>
+    </nav>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
