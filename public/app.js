@@ -561,9 +561,22 @@ async function renderAdmin(rest) {
     try { const d = await api('/api/admin/users', { method: 'POST', body: Object.fromEntries(new FormData(create)) }); location.hash = `#admin/user/${d.user.id}`; } catch (ex) { err.textContent = ex.message; }
   });
 
+  const daMsg = h('p', { class: 'muted' }, 'Publishes the assistant card inside Domo and connects it to the data behind all your Domo apps that have a live card. Run it again whenever you add or change an app.');
+  const daList = h('div', {});
+  const daBtn = h('button', { class: 'btn primary', type: 'button' }, 'Update Domo Assistant');
+  daBtn.addEventListener('click', async () => {
+    daBtn.disabled = true; daMsg.className = 'muted'; daMsg.textContent = 'Working in Domo… this can take a minute or two. Keep this screen open.'; clear(daList);
+    try {
+      const r = await api('/api/admin/domo-assistant/publish', { method: 'POST', body: {} });
+      daMsg.textContent = `Done. ${r.steps.join(' ')} Close and reopen the card in Domo to load it.`;
+      daList.append(h('div', { class: 'section-title' }, `Connected data (${r.datasets.length})`), ...r.datasets.map((d) => h('div', { class: 'card' }, h('strong', {}, d.name), h('div', { class: 'muted' }, d.description))));
+    } catch (ex) { daMsg.textContent = ex.message; daMsg.className = 'error'; }
+    daBtn.disabled = false;
+  });
+  const daCard = isOwner() ? h('div', { class: 'card' }, h('h2', {}, 'Domo Assistant'), daMsg, h('div', { class: 'row' }, daBtn), daList) : null;
   show(h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { create.hidden = false; } }, '+ Add person'),
     h('a', { class: 'btn linkbtn', href: '#admin/datasets' }, 'Dataset catalog')),
-  create,
+  create, daCard,
   h('div', { class: 'section-title' }, `People (${users.length})`),
   users.map((u) => h('div', { class: 'card list-item tap', onclick: () => { location.hash = `#admin/user/${u.id}`; } },
     h('div', { class: 'main' },

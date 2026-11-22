@@ -7,6 +7,7 @@ import { isValidTimeZone } from '../time.js';
 import { validEmail, validPassword } from './auth.js';
 import { intId } from './api.js';
 import { audit } from '../audit.js';
+import { publishDomoAssistant } from '../integrations/domo-publish.js';
 import { domoListAllDatasets, domoDatasetCards } from '../integrations/domo.js';
 
 const ACCESS = ['executive', 'district', 'store'];
@@ -146,6 +147,21 @@ export function adminRoutes(ctx) {
       user: { id: u.id, name: u.name, email: u.email },
       activity: await ctx.db.query('SELECT id, tool, summary, outcome, approved, created_at FROM audit_log WHERE user_id = $1 ORDER BY id DESC LIMIT 300', [u.id]),
     });
+  });
+
+  // Owner only: publish/refresh the Domo Assistant inside Domo so it can pull from the data behind all his Domo apps.
+  r.post('/domo-assistant/publish', requireRole('owner'), async (req, res) => {
+    if (!ctx.config.domoInstance) return res.status(400).json({ error: 'DOMO_INSTANCE is not set in the Render environment settings.' });
+    if (!ctx.config.domoAppKey) return res.status(400).json({ error: 'DOMO_APP_KEY is not set in the Render environment settings.' });
+    if (!req.user.domo_token_enc) return res.status(400).json({ error: 'Add your own Domo token in Settings first.' });
+    try {
+      const out = await publishDomoAssistant(ctx, ctx.secrets.decrypt(req.user.domo_token_enc));
+      await audit(ctx.db, req.user.id, 'domo_assistant_publish', `${out.datasets.length} datasets wired`, 'ok');
+      res.json(out);
+    } catch (e) {
+      await audit(ctx.db, req.user.id, 'domo_assistant_publish', String(e.message).slice(0, 200), 'error');
+      res.status(502).json({ error: e.message });
+    }
   });
 
   // Dataset catalog
