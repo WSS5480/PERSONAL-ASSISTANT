@@ -4,7 +4,8 @@ import { startApp, owner, createUser } from './helpers.js';
 import { makeAlias } from '../src/integrations/domo-publish.js';
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'; const P = 'aaaaaaaa-0000-0000-0000-000000000002'; const X = 'aaaaaaaa-0000-0000-0000-000000000003';
-function routes(log, { hasAssistant = true } = {}) {
+function routes(log, { hasAssistant = true, manifestTakes = true, putTakes = false } = {}) {
+  let mapping = [{ alias: 'OLD', dataSetId: A }];
   const designs = [{ id: 'd-pnl', name: 'Financial P & L' }, { id: 'd-inv', name: 'Inventory' }, { id: 'd-old', name: 'Old app' }];
   if (hasAssistant) designs.push({ id: 'd-asst', name: 'Domo Assistant' });
   const detail = {
@@ -14,11 +15,17 @@ function routes(log, { hasAssistant = true } = {}) {
   };
   return [
     { match: (c) => /\/api\/apps\/v1\/designs\?limit/.test(c.url), respond: () => ({ body: designs }) },
+    { match: (c) => /\/api\/apps\/v1\/designs\/(d-asst|d-new)\?parts=versions$/.test(c.url), respond: () => ({ body: { versions: [{ version: '0.1.0', datasetsMapping: mapping }] } }) },
     { match: (c) => /\/api\/apps\/v1\/designs\/[^/]+\?parts=/.test(c.url), respond: (c) => ({ body: detail[c.url.match(/designs\/([^/?]+)/)[1]] }) },
+    { match: (c) => c.method === 'PUT' && /\/api\/apps\/v1\/designs\/[^/?]+$/.test(c.url), respond: (c) => { log.push(['put', c.body]); if (!putTakes) return { status: 405, body: { message: 'Not allowed' } }; mapping = JSON.parse(c.body).datasetsMapping; return { body: {} }; } },
     { match: (c) => /\/api\/data\/v3\/datasources\//.test(c.url), respond: (c) => ({ body: c.url.includes(P) ? { name: 'Store P&L by Month', rowCount: 5000 } : { name: 'Inventory Disposition Final', rowCount: 384000 } }) },
-    { match: (c) => c.method === 'POST' && /\/api\/apps\/v1\/designs$/.test(c.url), respond: (c) => { log.push(['create', c.body]); return { body: { id: 'd-new' } }; } },
+    { match: (c) => c.method === 'POST' && /\/api\/apps\/v1\/designs$/.test(c.url), respond: (c) => { log.push(['create', c.body]); mapping = JSON.parse(c.body).datasetsMapping; return { body: { id: 'd-new' } }; } },
     { match: (c) => /\/versions$/.test(c.url), respond: (c) => { log.push(['version', c.body]); return { body: {} }; } },
-    { match: (c) => /\/assets\?path=/.test(c.url), respond: (c) => { log.push(['asset', c.url, c.body]); return { body: {} }; } },
+    { match: (c) => /\/assets\?path=/.test(c.url), respond: async (c) => {
+      log.push(['asset', c.url, c.body]);
+      if (manifestTakes && c.url.includes('manifest.json')) mapping = JSON.parse(await c.body.get('file').text()).datasetsMapping;
+      return { body: {} };
+    } },
   ];
 }
 
@@ -45,10 +52,8 @@ test('Update Domo Assistant: owner only, uses the owner\'s token, wires datasets
     assert.deepEqual(r.body.datasets.map((d) => d.name), ['Inventory Disposition Final', 'Store P&L by Month'], 'most-used first; unused app left out');
     assert.match(r.body.datasets[0].description, /used by: (Financial P & L, Inventory|Inventory, Financial P & L)/);
     assert.ok(t.fetchCalls.every((c) => c.headers['X-DOMO-Developer-Token'] === 'TOKEN-OWNER-9999' && c.url.startsWith('https://acme.domo.com/')));
-    const version = JSON.parse(log.find((x) => x[0] === 'version')[1]);
-    assert.equal(version.id, 'd-asst');
-    assert.deepEqual(version.datasetsMapping.map((m) => m.dataSetId).sort(), [A, P].sort());
-    assert.ok(!log.some((x) => x[0] === 'create'));
+    assert.ok(!log.some((x) => x[0] === 'create' || x[0] === 'put'), 'manifest upload was enough');
+    assert.match(r.body.steps.join(' '), /Domo confirms 2 datasets are connected/);
     const assets = log.filter((x) => x[0] === 'asset').map((x) => decodeURIComponent(x[1].split('path=')[1]));
     assert.deepEqual(assets.sort(), ['app.css', 'app.js', 'datasets.js', 'index.html', 'manifest.json']);
     for (const resp of o.responses) assert.ok(!resp.includes('TOKEN-OWNER-9999') && !resp.includes('app-key-123'));
@@ -72,4 +77,20 @@ test('Update Domo Assistant: creates the design when it does not exist; Domo err
     const r = await o.post('/api/admin/domo-assistant/publish', {});
     assert.equal(r.status, 502); assert.match(r.body.error, /Domo 401/);
   } finally { await bad.close(); }
+});
+
+test('Update Domo Assistant: falls back to a direct update, and never reports success when Domo did not take the list', async () => {
+  const viaPut = await startApp({ env: { DOMO_INSTANCE: 'acme', DOMO_APP_KEY: 'k' }, routes: routes([], { manifestTakes: false, putTakes: true }) });
+  try {
+    const o = await owner(viaPut); await o.put('/api/me/domo-token', { token: 'TOKEN-OWNER-9999' });
+    const r = await o.post('/api/admin/domo-assistant/publish', {});
+    assert.equal(r.status, 200, r.text);
+  } finally { await viaPut.close(); }
+  const stuck = await startApp({ env: { DOMO_INSTANCE: 'acme', DOMO_APP_KEY: 'k' }, routes: routes([], { manifestTakes: false, putTakes: false }) });
+  try {
+    const o = await owner(stuck); await o.put('/api/me/domo-token', { token: 'TOKEN-OWNER-9999' });
+    const r = await o.post('/api/admin/domo-assistant/publish', {});
+    assert.equal(r.status, 502);
+    assert.match(r.body.error, /still shows 1 of 2 datasets/); assert.match(r.body.error, /Domo 405/);
+  } finally { await stuck.close(); }
 });

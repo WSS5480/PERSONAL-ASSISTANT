@@ -96,17 +96,6 @@ export async function publishDomoAssistant(ctx, token) {
   if (!designId) {
     const created = await call(ctx, token, `${root}/api/apps/v1/designs`, json(manifest));
     designId = created.id; steps.push('Created the Domo Assistant app design.');
-  } else {
-    manifest.id = designId;
-    try {
-      await call(ctx, token, `${root}/api/apps/v1/designs/${designId}/versions`, json(manifest));
-      steps.push('Updated the app version with the new dataset list.');
-    } catch (e1) {
-      try {
-        await call(ctx, token, `${root}/api/apps/v1/designs/${designId}/versions/${manifest.version}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(manifest) });
-        steps.push('Updated the app version with the new dataset list.');
-      } catch (e2) { throw new Error(`Could not update the app's dataset list in Domo. ${e1.message} / ${e2.message}. Nothing else was changed.`); }
-    }
   }
   manifest.id = designId;
 
@@ -117,10 +106,33 @@ export async function publishDomoAssistant(ctx, token) {
     ['manifest.json', JSON.stringify(manifest, null, 2), 'application/json'], ['datasets.js', datasetsJs, 'application/javascript'],
     ['app.js', appJs, 'application/javascript'], ['app.css', read('app.css'), 'text/css'], ['index.html', read('index.html'), 'text/html'],
   ];
-  for (const [name, body, type] of files) {
+  const upload = async ([name, body, type]) => {
     const fd = new FormData(); fd.append('file', new Blob([body], { type }), name);
     await call(ctx, token, `${root}/api/apps/v1/designs/${designId}/versions/${manifest.version}/assets?path=${encodeURIComponent(name)}`, { method: 'POST', body: fd });
+  };
+  // The manifest goes first and is verified before anything else changes, so a refused dataset list
+  // leaves the working app exactly as it was.
+  await upload(files[0]);
+
+  // Confirm Domo now shows the new dataset list on the app. Uploading manifest.json is how Domo's own editor
+  // saves the list; if that did not take, try updating the design directly. Never report success unverified.
+  const wired = async () => {
+    const j = await call(ctx, token, `${root}/api/apps/v1/designs/${designId}?parts=versions`);
+    const vs = j.versions || []; const v = vs.find((x) => x.version === manifest.version) || vs[vs.length - 1];
+    return new Set((v?.datasetsMapping || []).map((m) => m.dataSetId));
+  };
+  const want = entries.map((e) => e.dataSetId);
+  let have = await wired();
+  if (!want.every((id) => have.has(id))) {
+    let detail = '';
+    try { await call(ctx, token, `${root}/api/apps/v1/designs/${designId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(manifest) }); } catch (e) { detail = e.message; }
+    have = await wired();
+    if (!want.every((id) => have.has(id))) {
+      throw new Error(`Domo did not accept the new dataset list: it still shows ${have.size} of ${want.length} datasets connected to the app.${detail ? ` Direct update said: ${detail}.` : ''} The assistant in Domo was left as it was.`);
+    }
   }
+  steps.push(`Domo confirms ${want.length} datasets are connected.`);
+  for (const f of files.slice(1)) await upload(f);
   steps.push(`Uploaded ${files.length} files.`);
   return { designId, datasets: entries.map((e) => ({ name: e.name, description: e.description })), steps, created: !found.assistant };
 }
