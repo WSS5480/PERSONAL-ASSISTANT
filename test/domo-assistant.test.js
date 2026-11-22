@@ -48,8 +48,8 @@ test('Domo Assistant: query runs in the client - server pauses, then finishes; s
     assert.deepEqual(first.body.calls, [{ id: 'tu_1', name: 'query_data', input: { alias: 'SALES', sql: 'SELECT SUM(amount) AS total FROM SALES' } }]);
     assert.equal(t.ai.keys[0], 'domo-key', 'uses the separate Domo AI key when set');
     const sys = t.ai.calls[0].params.system.map((b) => b.text).join('\n');
-    assert.match(sys, /- SALES: Sales — Daily sales/); assert.match(sys, /Pat Lee/);
-    assert.deepEqual(t.ai.calls[0].params.tools.map((x) => x.name), ['describe_dataset', 'query_data']);
+    assert.match(sys, /- SALES: Sales — Daily sales\n  columns: store, amount/); assert.match(sys, /Pat Lee/);
+    assert.deepEqual(t.ai.calls[0].params.tools.map((x) => x.name), ['query_data'], 'old app copies get columns up front and no describe tool');
 
     const messages = [...first.body.messages, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: '{"rows":[{"total":1200}]}' }] }];
     const second = await call(t, '/domo/chat', { method: 'POST', key: 'secret-app-key', body: { user: { id: '77', name: 'Pat Lee' }, datasets: DATASETS, messages } });
@@ -99,5 +99,16 @@ test('Domo Assistant: stable system prompt, dangling tool calls dropped, reasoni
     assert.ok(sent1.includes('"thinking"') && !sent2.includes('"thinking"'), 'retry drops reasoning blocks');
     const sys = t.ai.calls[0].params.system.map((b) => b.text).join('\n');
     assert.match(sys, /Today: \d{4}-\d{2}-\d{2} \(UTC\)/); assert.ok(!/\d{2}:\d{2}:\d{2}/.test(sys), 'no clock time in the system prompt');
+  } finally { await t.close(); }
+});
+
+test('Domo Assistant: a current app copy gets the describe tool and no columns in the prompt', async () => {
+  const t = await startApp({ env: { DOMO_APP_KEY: 'k', ANTHROPIC_API_KEY: 'house' } });
+  try {
+    const r = await call(t, '/domo/chat', { method: 'POST', key: 'k', body: { user: { id: '1' }, caps: ['describe'], datasets: [{ alias: 'PNL', name: 'Store P&L', description: 'used by: Financial P & L' }], messages: [{ role: 'user', content: 'NOI ytd' }] } });
+    assert.equal(r.status, 200);
+    assert.deepEqual(t.ai.calls[0].params.tools.map((x) => x.name), ['describe_dataset', 'query_data']);
+    const sys = t.ai.calls[0].params.system.map((b) => b.text).join('\n');
+    assert.match(sys, /- PNL: Store P&L — used by: Financial P & L/); assert.match(sys, /call describe_dataset/);
   } finally { await t.close(); }
 });

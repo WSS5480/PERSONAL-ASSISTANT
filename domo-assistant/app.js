@@ -133,7 +133,7 @@ function runCall(call) {
 }
 
 function turn(step) {
-  var payload = { user: state.user, datasets: state.datasets, messages: state.messages };
+  var payload = { user: state.user, datasets: state.datasets, messages: state.messages, caps: ['describe'] };
   return server('/domo/chat', payload).then(function (out) {
     state.messages = out.messages || state.messages;
     if (out.status !== 'needs_client') return out.text;

@@ -43,9 +43,9 @@ export const DESCRIBE_TOOL = {
   input_schema: { type: 'object', properties: { alias: { type: 'string', description: 'Dataset alias from the list' } }, required: ['alias'] },
 };
 
-export function buildDomoSystem(user, datasets, now = new Date()) {
+export function buildDomoSystem(user, datasets, now = new Date(), canDescribe = true) {
   const list = datasets.length
-    ? datasets.map((d) => `- ${d.alias}: ${d.name}${d.description ? ` — ${d.description}` : ''}`).join('\n')
+    ? datasets.map((d) => `- ${d.alias}: ${d.name}${d.description ? ` — ${d.description}` : ''}${!canDescribe && d.columns?.length ? `\n  columns: ${d.columns.join(', ')}` : ''}`).join('\n')
     : '(no datasets are connected to this assistant yet)';
   return {
     static: [
@@ -53,7 +53,7 @@ export function buildDomoSystem(user, datasets, now = new Date()) {
       'Answer questions with real numbers by querying the datasets listed below. Never invent numbers.',
       'Finding the data:',
       '- The list gives each dataset\'s alias, its name, and the Domo apps and dashboards that use it. Pick the dataset whose name or apps match the question: financial measures (revenue, expenses, NOI, EBITDA, P&L lines, budget) come from P&L / financial datasets; inventory questions from inventory datasets; collections, calls, sales, purchasing and so on from theirs.',
-      '- Before the first query on a dataset, call describe_dataset to get its exact column names and sample rows. Never guess column names.',
+      canDescribe ? '- Before the first query on a dataset, call describe_dataset to get its exact column names and sample rows. Never guess column names.' : '- Use only the column names listed for each dataset.',
       '- If the first dataset cannot answer, check the next most likely one or two before saying the data is not available. Only say data is missing after you have looked, and then name what you checked.',
       'Querying:',
       '- Only single read-only SELECT statements with query_data. Use the dataset alias as the table name. Put column names with spaces or symbols in backticks.',
@@ -117,7 +117,10 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     const user = { id: clean(b.user?.id, 60), name: clean(b.user?.name, 100) };
     const datasets = (Array.isArray(b.datasets) ? b.datasets : []).slice(0, 120).map((d) => ({
       alias: clean(d.alias, 80), name: clean(d.name, 160), description: clean(d.description, 300),
+      columns: (Array.isArray(d.columns) ? d.columns : []).slice(0, 150).map((c) => clean(c, 100)).filter(Boolean),
     })).filter((d) => /^[A-Za-z0-9_]+$/.test(d.alias));
+    // Older published copies of the Domo app cannot run describe_dataset; they send columns up front instead.
+    const canDescribe = Array.isArray(b.caps) && b.caps.includes('describe');
     const messages = Array.isArray(b.messages) ? b.messages.slice(-MAX_MESSAGES) : [];
     while (messages.length && messages[0]?.role !== 'user') messages.shift();
     if (!messages.length || !messages.every((m) => (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))) {
@@ -135,8 +138,8 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     while (messages.length && (messages[0].role !== 'user' || (Array.isArray(messages[0].content) && messages[0].content.some((b) => b?.type === 'tool_result')))) messages.shift();
     if (!messages.length) return res.status(400).json({ error: 'Bad conversation format.' });
     const run = (msgs) => runAssistant({
-      user, messages: msgs, tools: datasets.length ? [DESCRIBE_TOOL, QUERY_TOOL] : [], apiKey, model: ctx.config.model,
-        system: buildDomoSystem(user, datasets, new Date(now())), createClient: ctx.createClient,
+      user, messages: msgs, tools: !datasets.length ? [] : canDescribe ? [DESCRIBE_TOOL, QUERY_TOOL] : [QUERY_TOOL], apiKey, model: ctx.config.model,
+        system: buildDomoSystem(user, datasets, new Date(now()), canDescribe), createClient: ctx.createClient,
         executeTool: async (name) => ({ ok: false, error: `Tool ${name} is not available.` }),
         requestApproval: async () => { throw new Error('No approval tools here'); },
         maxIterations: 6, maxTokens: 1500,
