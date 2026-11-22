@@ -48,8 +48,8 @@ test('Domo Assistant: query runs in the client - server pauses, then finishes; s
     assert.deepEqual(first.body.calls, [{ id: 'tu_1', name: 'query_data', input: { alias: 'SALES', sql: 'SELECT SUM(amount) AS total FROM SALES' } }]);
     assert.equal(t.ai.keys[0], 'domo-key', 'uses the separate Domo AI key when set');
     const sys = t.ai.calls[0].params.system.map((b) => b.text).join('\n');
-    assert.match(sys, /alias SALES/); assert.match(sys, /Pat Lee/);
-    assert.equal(t.ai.calls[0].params.tools[0].name, 'query_data');
+    assert.match(sys, /- SALES: Sales — Daily sales/); assert.match(sys, /Pat Lee/);
+    assert.deepEqual(t.ai.calls[0].params.tools.map((x) => x.name), ['describe_dataset', 'query_data']);
 
     const messages = [...first.body.messages, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: '{"rows":[{"total":1200}]}' }] }];
     const second = await call(t, '/domo/chat', { method: 'POST', key: 'secret-app-key', body: { user: { id: '77', name: 'Pat Lee' }, datasets: DATASETS, messages } });

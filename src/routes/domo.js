@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const APP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'domo-assistant');
-const APP_FILES = { 'manifest.json': 'application/json', 'index.html': 'text/html', 'app.css': 'text/css', 'app.js': 'text/javascript' };
+const APP_FILES = { 'manifest.json': 'application/json', 'index.html': 'text/html', 'app.css': 'text/css', 'app.js': 'text/javascript', 'datasets.js': 'text/javascript' };
 
 const ORIGIN_OK = /^https:\/\/[a-z0-9.-]+\.domo\.com$/i;
 const MAX_MESSAGES = 60;
@@ -36,22 +36,34 @@ export const QUERY_TOOL = {
   },
 };
 
+export const DESCRIBE_TOOL = {
+  name: 'describe_dataset',
+  execution: 'client',
+  description: 'Get the exact column names and three sample rows of one listed dataset. Call this before the first query on a dataset.',
+  input_schema: { type: 'object', properties: { alias: { type: 'string', description: 'Dataset alias from the list' } }, required: ['alias'] },
+};
+
 export function buildDomoSystem(user, datasets, now = new Date()) {
   const list = datasets.length
-    ? datasets.map((d) => `- alias ${d.alias}: ${d.name}${d.description ? ` — ${d.description}` : ''}${d.columns.length ? `\n  columns: ${d.columns.join(', ')}` : ''}`).join('\n')
+    ? datasets.map((d) => `- ${d.alias}: ${d.name}${d.description ? ` — ${d.description}` : ''}`).join('\n')
     : '(no datasets are connected to this assistant yet)';
   return {
     static: [
       'You are the Domo Assistant, a business-data assistant that lives inside the company\'s Domo dashboards.',
-      'Answer questions with real numbers by querying the datasets listed below with the query_data tool. Never invent numbers.',
-      'Rules:',
-      '- Only single read-only SELECT statements. Use the dataset alias as the table name. Put column names with spaces or symbols in backticks.',
+      'Answer questions with real numbers by querying the datasets listed below. Never invent numbers.',
+      'Finding the data:',
+      '- The list gives each dataset\'s alias, its name, and the Domo apps and dashboards that use it. Pick the dataset whose name or apps match the question: financial measures (revenue, expenses, NOI, EBITDA, P&L lines, budget) come from P&L / financial datasets; inventory questions from inventory datasets; collections, calls, sales, purchasing and so on from theirs.',
+      '- Before the first query on a dataset, call describe_dataset to get its exact column names and sample rows. Never guess column names.',
+      '- If the first dataset cannot answer, check the next most likely one or two before saying the data is not available. Only say data is missing after you have looked, and then name what you checked.',
+      'Querying:',
+      '- Only single read-only SELECT statements with query_data. Use the dataset alias as the table name. Put column names with spaces or symbols in backticks.',
       '- Aggregate in SQL (SUM, COUNT, AVG, GROUP BY, ORDER BY, LIMIT). Do not pull raw rows to add up yourself.',
-      '- Domo already limits the rows to what this person is allowed to see (their store or district). Describe results as "what you have access to"; never suggest ways around that.',
-      '- If a query fails, read the error, fix the SQL (check column names) and try again, at most twice.',
-      '- If the listed datasets cannot answer the question, say so plainly and say which data would be needed.',
-      '- Keep answers short and practical: the key number first, then at most a few lines. Use a small list for breakdowns. Number list items.',
-      '- State the date range you used. Format money with $ and commas.',
+      '- If a query fails, read the error, fix the SQL and try again, at most twice per dataset.',
+      '- Domo already limits the rows to what this person is allowed to see (their store or district). Describe results as what they have access to; never suggest ways around that.',
+      'Answering:',
+      '- Short and practical: the key number first, then at most a few lines. Number list items. State the date range and the dataset you used. Format money with $ and commas.',
+      '- If a term could mean different measures in the data (for example which line is NOI), say which one you used.',
+      '- Plain text only. Do not use Markdown symbols such as ** or #.',
     ].join('\n'),
     // Date only, no clock time: this text must be identical on every request of one turn, because the
     // model's reasoning blocks are bound to the system prompt they were created with.
@@ -103,9 +115,8 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
 
     const b = req.body || {};
     const user = { id: clean(b.user?.id, 60), name: clean(b.user?.name, 100) };
-    const datasets = (Array.isArray(b.datasets) ? b.datasets : []).slice(0, 40).map((d) => ({
-      alias: clean(d.alias, 80), name: clean(d.name, 200), description: clean(d.description, 600),
-      columns: (Array.isArray(d.columns) ? d.columns : []).slice(0, 150).map((c) => clean(c, 100)).filter(Boolean),
+    const datasets = (Array.isArray(b.datasets) ? b.datasets : []).slice(0, 120).map((d) => ({
+      alias: clean(d.alias, 80), name: clean(d.name, 160), description: clean(d.description, 300),
     })).filter((d) => /^[A-Za-z0-9_]+$/.test(d.alias));
     const messages = Array.isArray(b.messages) ? b.messages.slice(-MAX_MESSAGES) : [];
     while (messages.length && messages[0]?.role !== 'user') messages.shift();
@@ -124,11 +135,11 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     while (messages.length && (messages[0].role !== 'user' || (Array.isArray(messages[0].content) && messages[0].content.some((b) => b?.type === 'tool_result')))) messages.shift();
     if (!messages.length) return res.status(400).json({ error: 'Bad conversation format.' });
     const run = (msgs) => runAssistant({
-      user, messages: msgs, tools: datasets.length ? [QUERY_TOOL] : [], apiKey, model: ctx.config.model,
+      user, messages: msgs, tools: datasets.length ? [DESCRIBE_TOOL, QUERY_TOOL] : [], apiKey, model: ctx.config.model,
         system: buildDomoSystem(user, datasets, new Date(now())), createClient: ctx.createClient,
         executeTool: async (name) => ({ ok: false, error: `Tool ${name} is not available.` }),
         requestApproval: async () => { throw new Error('No approval tools here'); },
-        maxIterations: 6, maxTokens: 1200,
+        maxIterations: 6, maxTokens: 1500,
       onUsage: (u, model) => console.log(`[domo] usage user=${user.id || '?'} model=${model} in=${u.input_tokens || 0} out=${u.output_tokens || 0}`),
     });
     const noThinking = (msgs) => msgs.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((b) => b?.type !== 'thinking' && b?.type !== 'redacted_thinking') } : m)).filter((m) => !Array.isArray(m.content) || m.content.length);

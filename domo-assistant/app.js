@@ -5,15 +5,13 @@
  * SETUP (see HANDOFF.md in the personal-assistant repo):
  *  - SERVER: the My Assistant server on Render.
  *  - APP_KEY: must equal DOMO_APP_KEY in that server's Render environment. Never commit the real value.
- *  - DATASETS: one entry per dataset wired in manifest.json (same alias). name/description tell the AI what it holds.
+ *  - Datasets come from datasets.js (window.DA_DATASETS): one entry per dataset wired in manifest.json (same alias).
  */
 var SERVER = 'https://my-assistant-rjme.onrender.com';
 var APP_KEY = '__DOMO_APP_KEY__';
-var DATASETS = [
-  { alias: 'INVENTORY_DISPOSITION_FINAL', name: 'Inventory Disposition Final', description: 'Current inventory by store: one row per unit with its status, condition, category and cost.' }
-];
+var DATASETS = window.DA_DATASETS || [];
 var MAX_ROWS = 100;
-var MAX_TURN_STEPS = 8;
+var MAX_TURN_STEPS = 14;
 
 var D = window.Domo || window.domo;
 var $ = function (id) { return document.getElementById(id); };
@@ -21,7 +19,14 @@ var log = $('log'), input = $('input'), sendBtn = $('send'), statusEl = $('statu
 var state = { user: { id: '', name: '' }, datasets: [], messages: [], busy: false, speak: false };
 
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-function add(cls, text) { var m = el('div', 'msg ' + cls, text); log.appendChild(m); log.scrollTop = log.scrollHeight; return m; }
+function add(cls, text) {
+  var m = el('div', 'msg ' + cls);
+  // Show **bold** as bold instead of raw asterisks; everything is added as text, never as HTML.
+  String(text == null ? '' : text).split(/(\*\*[^*\n]+\*\*)/).forEach(function (part) {
+    if (/^\*\*[^*\n]+\*\*$/.test(part)) m.appendChild(el('b', '', part.slice(2, -2))); else if (part) m.appendChild(document.createTextNode(part));
+  });
+  log.appendChild(m); log.scrollTop = log.scrollHeight; return m;
+}
 function setStatus(parts) {
   statusEl.textContent = '';
   parts.forEach(function (p) { statusEl.appendChild(el('span', p.ok ? 'ok' : 'bad', (p.ok ? '● ' : '○ ') + p.label)); });
@@ -55,14 +60,20 @@ function loadUser() {
     var e = D.env || {}; state.user = { id: String(e.userId || ''), name: String(e.userName || '') };
   });
 }
+var described = {};
+function describe(alias) {
+  if (described[alias]) return Promise.resolve(described[alias]);
+  return runSql(alias, 'SELECT * FROM ' + alias + ' LIMIT 3').then(function (r) {
+    described[alias] = { columns: r.columns, sampleRows: r.rows.slice(0, 3) }; return described[alias];
+  });
+}
 function loadDatasets() {
-  return Promise.all(DATASETS.map(function (d) {
-    return runSql(d.alias, 'SELECT * FROM ' + d.alias + ' LIMIT 1').then(function (r) {
-      return { alias: d.alias, name: d.name, description: d.description, columns: r.columns, ok: true };
-    }).catch(function (err) {
-      return { alias: d.alias, name: d.name, description: d.description, columns: [], ok: false, error: String((err && err.message) || err) };
-    });
-  })).then(function (list) { state.datasets = list; });
+  // Columns are fetched only when a dataset is actually needed. At start, just confirm Domo data is reachable.
+  state.datasets = DATASETS.map(function (d) { return { alias: d.alias, name: d.name, description: d.description || '' }; });
+  if (!state.datasets.length) { state.dataOk = false; return Promise.resolve(); }
+  return describe(state.datasets[0].alias).then(function () { state.dataOk = true; }).catch(function (err) {
+    state.dataOk = false; state.dataError = String((err && (err.message || err.statusText)) || err);
+  });
 }
 
 // ---------- Server side ----------
@@ -100,6 +111,15 @@ function showData(call, result) {
 function runCall(call) {
   var a = call.input || {};
   var known = state.datasets.some(function (d) { return d.alias === a.alias; });
+  if (call.name === 'describe_dataset') {
+    var dp = !known ? Promise.resolve({ error: 'Unknown dataset alias.' }) : describe(a.alias).catch(function (err) {
+      return { error: 'Could not read this dataset (it may not be shared with this person): ' + String((err && (err.message || err.statusText)) || err).slice(0, 300) };
+    });
+    return dp.then(function (result) {
+      var t = JSON.stringify(result); if (t.length > 9000) t = t.slice(0, 9000) + '…[truncated]';
+      return { type: 'tool_result', tool_use_id: call.id, content: t, is_error: !!result.error };
+    });
+  }
   var bad = !known ? 'Unknown dataset alias.' : validSelect(a.sql);
   var p = bad ? Promise.resolve({ error: bad }) : runSql(a.alias, a.sql).then(function (r) {
     var truncated = r.rows.length > MAX_ROWS;
@@ -113,7 +133,7 @@ function runCall(call) {
 }
 
 function turn(step) {
-  var payload = { user: state.user, datasets: state.datasets.filter(function (d) { return d.ok; }), messages: state.messages };
+  var payload = { user: state.user, datasets: state.datasets, messages: state.messages };
   return server('/domo/chat', payload).then(function (out) {
     state.messages = out.messages || state.messages;
     if (out.status !== 'needs_client') return out.text;
@@ -175,8 +195,8 @@ input.addEventListener('input', function () { input.style.height = 'auto'; input
 $('clear').addEventListener('click', function () { state.messages = []; log.textContent = ''; greet(); });
 
 function greet() {
-  var ok = state.datasets.filter(function (d) { return d.ok; });
-  add('bot', 'Hi' + (state.user.name ? ' ' + state.user.name.split(' ')[0] : '') + '. Ask me about ' + (ok.length ? ok.map(function (d) { return d.name; }).join(', ') : 'your data') + '.');
+  var n = state.datasets.length;
+  add('bot', 'Hi' + (state.user.name ? ' ' + state.user.name.split(' ')[0] : '') + '. Ask me about your numbers' + (n > 1 ? ' — I can look across ' + n + ' datasets from your Domo apps.' : n === 1 ? ' in ' + state.datasets[0].name + '.' : '.'));
 }
 
 // ---------- Boot + connection test ----------
@@ -189,9 +209,8 @@ function greet() {
     else if (!p.keyAccepted) serverMsg = 'The AI server did not accept this app\'s key (APP_KEY must match DOMO_APP_KEY).';
   }).catch(function (err) { serverMsg = 'Could not reach the AI server from inside Domo: ' + String((err && err.message) || err); });
   Promise.all([loadUser(), loadDatasets(), ping]).then(function () {
-    var dataOk = state.datasets.some(function (d) { return d.ok; });
-    setStatus([{ ok: dataOk, label: 'Domo data' }, { ok: serverOk, label: 'AI' }]);
-    state.datasets.filter(function (d) { return !d.ok; }).forEach(function (d) { add('err', 'Could not read ' + d.name + ': ' + d.error); });
+    setStatus([{ ok: !!state.dataOk, label: 'Domo data' }, { ok: serverOk, label: 'AI' }]);
+    if (!state.dataOk) add('err', state.datasets.length ? 'Could not read Domo data: ' + (state.dataError || 'unknown error') : 'No datasets are connected to this assistant yet.');
     if (serverMsg) add('err', serverMsg);
     greet();
   });
