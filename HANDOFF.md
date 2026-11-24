@@ -162,3 +162,9 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 6. Documents.
 7. Proactive morning brief and alerts.
 8. Higher-quality voice.
+
+## Nov 24 — Hub v18: renamed "The DASHBOARD!", Admin PIN
+- Hub (Domo design df2a92ed…, lives only in Domo) renamed Executive Views → **The DASHBOARD!** (header, titles, index.html). Design/card names in Domo unchanged.
+- "Manage" renamed **Admin**; opens behind a PIN prompt (1848), remembered per browser session. Button still only shows to OWNERS ids. PIN check is client-side (a light lock, not real security).
+- Backup of v17 app.js at hub asset `backup/v17-app.js`. Steve added embed links in Admin; popup windows confirmed working.
+- Open: "expand to the screens" (Nov 24) — meaning unclear, ask Steve.
