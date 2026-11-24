@@ -561,19 +561,25 @@ async function renderAdmin(rest) {
     try { const d = await api('/api/admin/users', { method: 'POST', body: Object.fromEntries(new FormData(create)) }); location.hash = `#admin/user/${d.user.id}`; } catch (ex) { err.textContent = ex.message; }
   });
 
-  const daMsg = h('p', { class: 'muted' }, 'Publishes the assistant card inside Domo and connects it to the data behind all your Domo apps that have a live card. Run it again whenever you add or change an app.');
+  const daMsg = h('p', { class: 'muted' }, 'Yours: connects the assistant to the data behind all your Domo apps. Team: a separate copy for all Domo users that only includes data protected by PDP, so each person sees their own stores. Run again whenever apps or PDP change.');
   const daList = h('div', {});
-  const daBtn = h('button', { class: 'btn primary', type: 'button' }, 'Update Domo Assistant');
-  daBtn.addEventListener('click', async () => {
-    daBtn.disabled = true; daMsg.className = 'muted'; daMsg.textContent = 'Working in Domo… this can take a minute or two. Keep this screen open.'; clear(daList);
+  const daBtn = h('button', { class: 'btn primary', type: 'button' }, 'Update my Domo Assistant');
+  const daTeam = h('button', { class: 'btn', type: 'button' }, 'Update team version (PDP data only)');
+  const runPublish = async (audience) => {
+    daBtn.disabled = true; daTeam.disabled = true; daMsg.className = 'muted'; daMsg.textContent = 'Working in Domo… this can take a minute or two. Keep this screen open.'; clear(daList);
     try {
-      const r = await api('/api/admin/domo-assistant/publish', { method: 'POST', body: {} });
-      daMsg.textContent = `Done. ${r.steps.join(' ')} Close and reopen the card in Domo to load it.`;
-      daList.append(h('div', { class: 'section-title' }, `Connected data (${r.datasets.length})`), ...r.datasets.map((d) => h('div', { class: 'card' }, h('strong', {}, d.name), h('div', { class: 'muted' }, d.description))));
+      const r = await api('/api/admin/domo-assistant/publish', { method: 'POST', body: { audience } });
+      daMsg.textContent = `Done. ${r.steps.join(' ')}`;
+      const cards = (list) => list.map((d) => h('div', { class: 'card' }, h('strong', {}, d.name), h('div', { class: 'muted' }, d.description)));
+      daList.append(h('div', { class: 'row mt8' }, h('a', { class: 'btn linkbtn', href: r.designUrl, target: '_blank', rel: 'noopener' }, 'Open this app in Domo')),
+        h('div', { class: 'section-title' }, `Connected data (${r.datasets.length})`), ...cards(r.datasets));
+      if (r.leftOut.length) daList.append(h('div', { class: 'section-title' }, `Left out — no PDP, everyone would see all rows (${r.leftOut.length})`), ...cards(r.leftOut));
     } catch (ex) { daMsg.textContent = ex.message; daMsg.className = 'error'; }
-    daBtn.disabled = false;
-  });
-  const daCard = isOwner() ? h('div', { class: 'card' }, h('h2', {}, 'Domo Assistant'), daMsg, h('div', { class: 'row' }, daBtn), daList) : null;
+    daBtn.disabled = false; daTeam.disabled = false;
+  };
+  daBtn.addEventListener('click', () => runPublish('owner'));
+  daTeam.addEventListener('click', () => runPublish('team'));
+  const daCard = isOwner() ? h('div', { class: 'card' }, h('h2', {}, 'Domo Assistant'), daMsg, h('div', { class: 'row' }, daBtn, daTeam), daList) : null;
   show(h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { create.hidden = false; } }, '+ Add person'),
     h('a', { class: 'btn linkbtn', href: '#admin/datasets' }, 'Dataset catalog')),
   create, daCard,

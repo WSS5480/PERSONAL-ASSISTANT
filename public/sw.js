@@ -1,5 +1,5 @@
 // Minimal service worker: caches the app shell only. Never caches /api or /auth.
-const CACHE = 'my-assistant-shell-v6';
+const CACHE = 'my-assistant-shell-v7';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

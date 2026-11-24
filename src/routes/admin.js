@@ -155,8 +155,9 @@ export function adminRoutes(ctx) {
     if (!ctx.config.domoAppKey) return res.status(400).json({ error: 'DOMO_APP_KEY is not set in the Render environment settings.' });
     if (!req.user.domo_token_enc) return res.status(400).json({ error: 'Add your own Domo token in Settings first.' });
     try {
-      const out = await publishDomoAssistant(ctx, ctx.secrets.decrypt(req.user.domo_token_enc));
-      await audit(ctx.db, req.user.id, 'domo_assistant_publish', `${out.datasets.length} datasets wired`, 'ok');
+      const audience = req.body?.audience === 'team' ? 'team' : 'owner';
+      const out = await publishDomoAssistant(ctx, ctx.secrets.decrypt(req.user.domo_token_enc), { audience });
+      await audit(ctx.db, req.user.id, 'domo_assistant_publish', `${audience}: ${out.datasets.length} datasets wired, ${out.leftOut.length} left out`, 'ok');
       res.json(out);
     } catch (e) {
       await audit(ctx.db, req.user.id, 'domo_assistant_publish', String(e.message).slice(0, 200), 'error');
