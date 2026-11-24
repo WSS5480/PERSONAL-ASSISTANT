@@ -117,7 +117,8 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     const user = { id: clean(b.user?.id, 60), name: clean(b.user?.name, 100) };
     const datasets = (Array.isArray(b.datasets) ? b.datasets : []).slice(0, 120).map((d) => ({
       alias: clean(d.alias, 80), name: clean(d.name, 160), description: clean(d.description, 300),
-      columns: (Array.isArray(d.columns) ? d.columns : []).slice(0, 150).map((c) => clean(c, 100)).filter(Boolean),
+      // Up to 400 columns: the Daily Management Report dataset has 322.
+      columns: (Array.isArray(d.columns) ? d.columns : []).slice(0, 400).map((c) => clean(c, 100)).filter(Boolean),
     })).filter((d) => /^[A-Za-z0-9_]+$/.test(d.alias));
     // Older published copies of the Domo app cannot run describe_dataset; they send columns up front instead.
     const canDescribe = Array.isArray(b.caps) && b.caps.includes('describe');
