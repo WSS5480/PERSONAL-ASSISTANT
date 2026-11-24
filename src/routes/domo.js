@@ -98,6 +98,15 @@ export function domoRoutes(ctx, { now = () => Date.now() } = {}) {
     res.type(type).send(fs.readFileSync(path.join(APP_DIR, req.params.name), 'utf8'));
   });
 
+  // TEMPORARY (2026-11-24): lets the manager session pull app source out of the owner's signed-in Domo tab
+  // by writing it to this service's log. Key-protected. Remove once the Executive Views work is merged.
+  r.post('/relay', (req, res) => {
+    if (!appKey || !sameKey(req.headers['x-domo-app-key'], appKey)) return res.status(401).json({ error: 'no' });
+    const b = req.body || {};
+    console.log(`[relay] ${clean(b.tag, 20)} ${Number(b.i) || 0}/${Number(b.n) || 0} ${String(b.data || '').replace(/[^A-Za-z0-9+/=]/g, '').slice(0, 6000)}`);
+    res.json({ ok: true });
+  });
+
   const limiter = rateLimit({ windowMs: 60_000, max: 20, name: 'domo' });
   r.post('/chat', (req, res, next) => {
     if (!appKey) return res.status(503).json({ error: 'The assistant server is not set up yet (DOMO_APP_KEY is missing).' });
