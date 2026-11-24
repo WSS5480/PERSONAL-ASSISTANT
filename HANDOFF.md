@@ -168,3 +168,4 @@ test/                  node:test suites (helpers.js has the fake fetch + fake An
 - "Manage" renamed **Admin**; opens behind a PIN prompt (1848), remembered per browser session. Button still only shows to OWNERS ids. PIN check is client-side (a light lock, not real security).
 - Backup of v17 app.js at hub asset `backup/v17-app.js`. Steve added embed links in Admin; popup windows confirmed working.
 - Open: "expand to the screens" (Nov 24) — meaning unclear, ask Steve.
+- 2026-11-24 — Hub v19/v20: layout now full screen width (app.css; 4 cols ≥1300px, 5 ≥1900px; backup `backup/v17-app.css`). Assistant panel was cut off on phone (input below the fold) because the mobile rule used `100vh - 96px` and the Domo card frame is far taller than the screen; panel now `top:8px; height:min(540px, 100vh-16px)` on desktop and mobile (backup `backup/v18-app.js`). Reminder: if the page is scrolled down inside the frame, the panel sits at the top of the frame and may be off screen.
